@@ -11,9 +11,9 @@ variables:
 build_test_push:
   stage: build
   image: docker:27-cli
-  services:
-    - name: docker:27-dind
-      alias: docker
+  variables:
+    DOCKER_HOST: unix:///var/run/docker.sock
+    DOCKER_BUILDKIT: "1"
 
   before_script:
     - docker info
