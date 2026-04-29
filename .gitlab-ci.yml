@@ -1,0 +1,65 @@
+stages:
+  - build
+
+variables:
+  DOCKER_TLS_CERTDIR: "/certs"
+  DOCKER_BUILDKIT: "1"
+  IMAGE_SHA: "$CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA"
+  IMAGE_BRANCH: "$CI_REGISTRY_IMAGE:$CI_COMMIT_REF_SLUG"
+  IMAGE_LATEST: "$CI_REGISTRY_IMAGE:latest"
+
+build_test_push:
+  stage: build
+  image: docker:27-cli
+  services:
+    - name: docker:27-dind
+      alias: docker
+
+  before_script:
+    - docker info
+    - echo "$CI_REGISTRY_PASSWORD" | docker login "$CI_REGISTRY" -u "$CI_REGISTRY_USER" --password-stdin
+
+  script:
+    - docker build --pull -t "$IMAGE_SHA" .
+
+    - docker run -d
+        --name test-container
+        -e CODE_SERVER_PASSWORD="ci-test-password"
+        -p 18443:8443
+        "$IMAGE_SHA"
+
+    - |
+      for i in $(seq 1 60); do
+        if docker exec test-container curl -fsS http://127.0.0.1:8443/healthz; then
+          echo "Container healthcheck passed"
+          break
+        fi
+
+        if [ "$i" = "60" ]; then
+          echo "Container healthcheck failed"
+          docker logs test-container
+          exit 1
+        fi
+
+        sleep 2
+      done
+
+    - docker logs test-container
+    - docker rm -f test-container
+
+    - docker tag "$IMAGE_SHA" "$IMAGE_BRANCH"
+    - docker push "$IMAGE_SHA"
+    - docker push "$IMAGE_BRANCH"
+
+    - |
+      if [ "$CI_COMMIT_BRANCH" = "$CI_DEFAULT_BRANCH" ]; then
+        docker tag "$IMAGE_SHA" "$IMAGE_LATEST"
+        docker push "$IMAGE_LATEST"
+      fi
+
+  after_script:
+    - docker rm -f test-container 2>/dev/null || true
+
+  rules:
+    - if: $CI_COMMIT_BRANCH
+    - if: $CI_COMMIT_TAG
