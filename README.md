@@ -62,7 +62,7 @@ Alternatively, use:
 | Port | Purpose |
 |---|---|
 | `8443` | code-server |
-| `8000` | vLLM OpenAI-compatible API, when manually started |
+| `8080` | vLLM OpenAI-compatible API, when manually started |
 
 ## Manual vLLM Startup
 
@@ -75,12 +75,19 @@ vllm serve Qwen/Qwen3.6-35B-A3B \
     --download-dir "$HF_HOME" \
     --api-key "$VLLM_API_KEY" \
     --host 0.0.0.0 \
-    --port 8000 \
+    --port 8080 \
+    --trust-remote-code \
+    --tensor-parallel-size 1 \
+    --max-num-batched-tokens 8192 \
     --max-model-len auto \
-    --reasoning-parser qwen3 \
     --enable-auto-tool-choice \
-    --max-num-seqs 256 \
-    --max-num-batched-tokens 16384 \
-    --enable-prefix-caching \
-    --tool-call-parser qwen3_coder
+    --tool-call-parser qwen3_coder \
+    --reasoning-parser qwen3 \
+    --mm-encoder-tp-mode data \
+    --speculative-config '{"method":"mtp","num_speculative_tokens":2}' \
+    --safetensors-load-strategy prefetch \
+    --kv-cache-dtype=fp8 \
+    --gpu-memory-utilization=0.95 \
+    --max-num-seqs 512 \
+    --served-model-name qwen3.6-35b-a3b
 ```
