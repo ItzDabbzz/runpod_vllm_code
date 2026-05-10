@@ -1,0 +1,87 @@
+name: Build, test, and push Docker image
+
+on:
+  push:
+    branches:
+      - '**'
+    tags:
+      - '*'
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+  IMAGE_SHA: ghcr.io/${{ github.repository }}:${{ github.sha }}
+  IMAGE_BRANCH: ghcr.io/${{ github.repository }}:${{ github.ref_name }}
+  IMAGE_LATEST: ghcr.io/${{ github.repository }}:latest
+  DOCKER_BUILDKIT: "1"
+
+jobs:
+  build-test-push:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Docker info
+        run: docker info
+
+      - name: Login to GHCR
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+      - name: Build image
+        run: docker build --pull -t "$IMAGE_SHA" .
+
+      - name: Start test container
+        run: |
+          docker run -d \
+            --name test-container \
+            -e CODE_SERVER_PASSWORD="ci-test-password" \
+            -p 18443:8443 \
+            "$IMAGE_SHA"
+
+      - name: Wait for healthcheck
+        run: |
+          for i in $(seq 1 60); do
+            if docker exec test-container curl -fsS http://127.0.0.1:8443/healthz; then
+              echo "Container healthcheck passed"
+              exit 0
+            fi
+
+            if [ "$i" = "60" ]; then
+              echo "Container healthcheck failed"
+              docker logs test-container
+              exit 1
+            fi
+
+            sleep 2
+          done
+
+      - name: Show logs
+        if: always()
+        run: docker logs test-container || true
+
+      - name: Remove test container
+        if: always()
+        run: docker rm -f test-container 2>/dev/null || true
+
+      - name: Tag branch image
+        if: github.ref_type == 'branch'
+        run: docker tag "$IMAGE_SHA" "$IMAGE_BRANCH"
+
+      - name: Push SHA image
+        run: docker push "$IMAGE_SHA"
+
+      - name: Push branch image
+        if: github.ref_type == 'branch'
+        run: docker push "$IMAGE_BRANCH"
+
+      - name: Push latest
+        if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+        run: |
+          docker tag "$IMAGE_SHA" "$IMAGE_LATEST"
+          docker push "$IMAGE_LATEST"
