@@ -29,6 +29,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
   sudo \
   tini \
   vim \
+  zstd \
   && git lfs install --system \
   && rm -rf /var/lib/apt/lists/*
 
@@ -54,6 +55,10 @@ RUN set -eux; \
   tar -xzf /tmp/code-server.tar.gz -C /opt/code-server --strip-components=1; \
   ln -sf /opt/code-server/bin/code-server /usr/local/bin/code-server; \
   rm -f /tmp/code-server.tar.gz
+
+RUN curl -fsSL -o /tmp/ollama.tar.zst https://ollama.com/download/ollama-linux-amd64.tar.zst \
+ && tar --zstd -xf /tmp/ollama.tar.zst -C /usr \
+ && rm /tmp/ollama.tar.zst
 
 RUN mkdir -p /workspace \
   && if ! id -u workspace >/dev/null 2>&1; then \
